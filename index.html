@@ -70,6 +70,8 @@ nav button.on{color:var(--acc);font-weight:700}
 .note{font-size:13px;color:var(--mute);margin-top:6px}
 .sum b.big{font-size:44px;display:block;text-align:center}
 </style>
+<script data-goatcounter="https://liorsagy.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -84,6 +86,10 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const dkey=(t=Date.now())=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const sod=()=>{const d=new Date();d.setHours(0,0,0,0);return d.getTime()};
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+
+/* ---------- analytics (no-op unless GoatCounter is loaded) ---------- */
+function track(name){try{if(window.goatcounter&&window.goatcounter.count)window.goatcounter.count({path:'event/'+name,title:name,event:true})}catch(e){}}
+const hasStats=()=>!!document.querySelector('script[data-goatcounter]');
 
 /* ---------- state ---------- */
 const fresh=()=>({w:{},days:{},newPerDay:10,newToday:{d:'',c:0}});
@@ -130,7 +136,8 @@ function buildQueue(scope,size,noLimit){
 function startSession(noLimit){
   const q=buildQueue(cfg.scope,cfg.size,noLimit);
   if(!q.length){msg='empty';return render()}
-  sess={q:q.map(w=>({w,retry:false})),i:0,ok:0,bad:[],total:q.length,answered:false,shown:false};
+  sess={q:q.map(w=>({w,retry:false})),i:0,ok:0,bad:[],total:q.length,answered:false,shown:false,counted:false};
+  track('session-start/'+cfg.type+'/'+(cfg.scope==='prob'?'problem':cfg.scope==='all'?'all':'unit'));
   go('session');
 }
 
@@ -154,7 +161,7 @@ function home(){
   ${prob?`<button class="btn sec" id="pb">תרגול מילים בעייתיות (${prob})</button>`:''}
   <h2>הגדרות</h2>
   <label>מילים חדשות ביום</label>
-  <div class="seg" id="npd">${[5,10,20,30].map(n=>`<button data-n="${n}" class="${S.newPerDay===n?'on':''}">${n}</button>`).join('')}</div>`;
+  <div class="seg" id="npd">${[5,10,20,30].map(n=>`<button data-n="${n}" class="${S.newPerDay===n?'on':''}">${n}</button>`).join('')}</div>${hasStats()?'<div class="note">האתר אוסף סטטיסטיקות שימוש אנונימיות (ללא עוגיות וללא פרטים אישיים), כדי להבין כמה אנשים משתמשים בו.</div>':''}`;
   $('go').onclick=()=>{cfg.scope='all';cfg.type=cfg.type||'flash';startSession(false)};
   $('more').onclick=()=>go('practice');
   const pb=$('pb');if(pb)pb.onclick=()=>{cfg.scope='prob';startSession(false)};
@@ -239,7 +246,7 @@ function session(){
 }
 function summary(){
   const s=sess;if(!s)return go('home');
-  const answered=s.ok+s.bad.length;
+  if(!s.counted){s.counted=true;track('session-finish')}
   $('app').innerHTML=`<div class="card sum"><h1 style="text-align:center">סיימת סבב</h1><b class="big">${s.ok}</b><div style="text-align:center;color:var(--mute)">תשובות נכונות${s.bad.length?` · ${s.bad.length} מילים לחזרה`:''}</div></div>
   ${s.bad.length?`<h2>מילים שטעית בהן</h2>${s.bad.map(w=>`<div class="item"><b>${esc(w.t)}</b><div class="d">${meanHtml(w)}</div></div>`).join('')}`:''}
   <button class="btn" id="again">סבב נוסף</button><button class="btn sec" id="hm">לבית</button>`;
@@ -263,7 +270,7 @@ function dict(){
     $('list').querySelectorAll('.h').forEach(h=>h.onclick=()=>{openId=openId===h.dataset.id?null:h.dataset.id;draw()});
     const mr=$('mr');if(mr)mr.onclick=()=>{dmax+=40;draw()};
   };
-  let t;$('q').oninput=e=>{dq=e.target.value;dmax=40;clearTimeout(t);t=setTimeout(draw,150)};
+  let t,tracked=false;$('q').oninput=e=>{if(!tracked&&e.target.value.trim().length>=2){tracked=true;track('dict-search')}dq=e.target.value;dmax=40;clearTimeout(t);t=setTimeout(draw,150)};
   $('du').onchange=e=>{dunit=e.target.value;dmax=40;draw()};
   draw();
 }
@@ -297,7 +304,7 @@ function stats(){
   <textarea id="rs"></textarea>
   <button class="btn sec" id="rb">שחזר</button><div class="note" id="bm"></div>`;
   $('bk').value=JSON.stringify(S);
-  $('cp').onclick=async()=>{try{await navigator.clipboard.writeText($('bk').value);$('bm').textContent='הועתק.'}catch(e){$('bk').select();$('bm').textContent='ההעתקה האוטומטית נחסמה: הטקסט סומן, העתק ידנית.'}};
+  $('cp').onclick=async()=>{try{await navigator.clipboard.writeText($('bk').value);track('backup-copy');$('bm').textContent='הועתק.'}catch(e){$('bk').select();$('bm').textContent='ההעתקה האוטומטית נחסמה: הטקסט סומן, העתק ידנית.'}};
   $('rb').onclick=()=>{try{const o=JSON.parse($('rs').value);if(!o||typeof o.w!=='object')throw 0;S=Object.assign(fresh(),o);save();$('bm').textContent='שוחזר בהצלחה.';setTimeout(render,600)}catch(e){$('bm').textContent='הקוד לא תקין.'}};
   document.querySelectorAll('.ub').forEach(r=>r.onclick=()=>{cfg.scope=r.dataset.u;go('practice')});
 }
